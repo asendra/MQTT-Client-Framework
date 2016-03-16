@@ -347,9 +347,12 @@
     if ([self.delegate respondsToSelector:@selector(handleEvent:event:error:)]) {
         [self.delegate handleEvent:self event:MQTTSessionEventConnectionClosed error:nil];
     }
+    
+    /*
     if ([self.delegate respondsToSelector:@selector(connectionClosed:)]) {
         [self.delegate connectionClosed:self];
     }
+    */
     
     NSError *error = [NSError errorWithDomain:@"MQTT"
                                          code:-6

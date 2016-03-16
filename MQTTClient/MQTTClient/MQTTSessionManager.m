@@ -11,6 +11,8 @@
 
 #import "MQTTLog.h"
 
+@import SVProgressHUD;
+
 @interface MQTTSessionManager()
 @property (nonatomic, readwrite) MQTTSessionManagerState state;
 @property (nonatomic, readwrite) NSError *lastErrorCode;
@@ -18,6 +20,8 @@
 @property (strong, nonatomic) NSTimer *reconnectTimer;
 @property (nonatomic) double reconnectTime;
 @property (nonatomic) BOOL reconnectFlag;
+
+@property (nonatomic) BOOL shouldReconnect;
 
 @property (strong, nonatomic) MQTTSession *session;
 
@@ -109,6 +113,9 @@
                           name:UIApplicationDidBecomeActiveNotification
                         object:nil];
 #endif
+    
+    self.shouldReconnect = YES;
+    
     return self;
 }
 
@@ -141,6 +148,7 @@
 }
 
 - (void)appDidBecomeActive {
+    self.shouldReconnect = YES;
     [self connectToLast];
 }
 #endif
@@ -310,6 +318,8 @@
 
 - (void)disconnect
 {
+    self.shouldReconnect = NO;
+    
     self.state = MQTTSessionManagerStateClosing;
     [self.session close];
 
@@ -340,10 +350,13 @@
         {
             self.lastErrorCode = nil;
             self.state = MQTTSessionManagerStateConnected;
+            
+            //[SVProgressHUD showSuccessWithStatus:@"MQTT Connected"];
+            
             break;
         }
         case MQTTSessionEventConnectionClosed:
-        case MQTTSessionEventConnectionClosedByBroker:
+        {
             self.state = MQTTSessionManagerStateClosed;
 #if TARGET_OS_IPHONE == 1
             if (self.backgroundTask) {
@@ -352,21 +365,32 @@
             }
 #endif
             self.state = MQTTSessionManagerStateStarting;
+            
+            //[SVProgressHUD showErrorWithStatus:[NSString stringWithFormat:@"MQTT %@", events[@(eventCode)]]];
+            
             break;
+        }
+        case MQTTSessionEventConnectionClosedByBroker:
         case MQTTSessionEventProtocolError:
         case MQTTSessionEventConnectionRefused:
         case MQTTSessionEventConnectionError:
         {
-            self.reconnectTimer = [NSTimer timerWithTimeInterval:self.reconnectTime
-                                                          target:self
-                                                        selector:@selector(reconnect)
-                                                        userInfo:Nil repeats:FALSE];
-            NSRunLoop *runLoop = [NSRunLoop currentRunLoop];
-            [runLoop addTimer:self.reconnectTimer
-                      forMode:NSDefaultRunLoopMode];
+            if (self.shouldReconnect)
+            {
+                self.reconnectTimer = [NSTimer timerWithTimeInterval:self.reconnectTime
+                                                              target:self
+                                                            selector:@selector(reconnect)
+                                                            userInfo:Nil repeats:FALSE];
+                NSRunLoop *runLoop = [NSRunLoop currentRunLoop];
+                [runLoop addTimer:self.reconnectTimer
+                          forMode:NSDefaultRunLoopMode];
+            }
 
             self.state = MQTTSessionManagerStateError;
             self.lastErrorCode = error;
+            
+            //[SVProgressHUD showErrorWithStatus:[NSString stringWithFormat:@"MQTT %@", events[@(eventCode)]]];
+            
             break;
         }
         default:
@@ -419,12 +443,27 @@
 
 - (void)connectToInternal
 {
+    /*
     if (self.state == MQTTSessionManagerStateStarting
         && self.session != nil) {
         self.state = MQTTSessionManagerStateConnecting;
         [self.session connectToHost:self.host
                                port:self.port
                            usingSSL:self.tls];
+    }
+    */
+    switch (self.state) {
+        case MQTTSessionManagerStateConnected:
+        case MQTTSessionManagerStateConnecting:
+            break;
+        default:
+            if (self.session) {
+                self.state = MQTTSessionManagerStateConnecting;
+                [self.session connectToHost:self.host
+                                       port:self.port
+                                   usingSSL:self.tls];
+            }
+            break;
     }
 }
 
